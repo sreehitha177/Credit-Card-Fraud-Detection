@@ -1,24 +1,18 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col
+from pyspark.sql.functions import from_json, col, current_timestamp, unix_timestamp, avg, count,window
 from pyspark.sql.types import StructType, StructField, DoubleType
 from pyspark.ml.feature import VectorAssembler
 from pyspark.ml.classification import RandomForestClassificationModel
+import time
 
-
-
-
-# Dynamically generate StructField for V1 to V28
+# Schema definition
 schema = StructType([
     StructField("Time", DoubleType(), True),
-    *[
-        StructField(f"V{i}", DoubleType(), True) for i in range(1, 29)
-    ],
+    *[StructField(f"V{i}", DoubleType(), True) for i in range(1, 29)],
     StructField("Amount", DoubleType(), True),
     StructField("Class", DoubleType(), True)
 ])
 
-
-# Input columns for the model
 input_cols = [f"V{i}" for i in range(1, 29)] + ["Time", "Amount"]
 
 def main():
@@ -27,12 +21,13 @@ def main():
         .appName("FraudDetectionStreaming") \
         .getOrCreate()
 
+    spark.sparkContext.setLogLevel("WARN")
     # Load the trained model
-    model_path = "../ml_model/trained_model"  # Replace with your actual model path
+    model_path = "../ml_model/trained_model"  # Replace with your actual path
     model = RandomForestClassificationModel.load(model_path)
-    print(f"Trained model loaded from: {model_path}")
+    print(f"Model loaded from: {model_path}")
 
-    # Read from Kafka #TODO: PUT A GOOD TOPIC NAME
+    # Read from Kafka
     kafka_stream = spark.readStream \
         .format("kafka") \
         .option("kafka.bootstrap.servers", "localhost:9092") \
@@ -50,23 +45,56 @@ def main():
 
     # Apply the trained model
     predictions = model.transform(processed_stream)
+    predictions = predictions.withColumn("ProcessingTime", current_timestamp())
+    predictions = predictions.withColumn(
+        "ResponseTime", unix_timestamp(col("ProcessingTime")) - col("Time")
+    )
+
+    # Calculate transactions per second
+     # Calculate throughput
+    transactions_per_second = predictions.groupBy(
+        window(col("ProcessingTime"), "1 second")
+    ).agg(
+        count("*").alias("transactions_per_second")
+    )
+
+    # Calculate response time metrics
+    metrics = predictions.groupBy().agg(
+        count("*").alias("total_transactions"),
+        avg("ResponseTime").alias("avg_response_time")
+    )
+
+    # Write throughput to console
+    query_throughput = transactions_per_second.writeStream \
+        .outputMode("complete") \
+        .format("console") \
+        .start()
+
+    # Write response time metrics to console
+    query_metrics = metrics.writeStream \
+        .outputMode("complete") \
+        .format("console") \
+        .start()
+
+    
+    
+    # query_metrics.awaitTermination()
+
 
     # Select flagged fraud alerts
     fraud_alerts = predictions.filter(col("prediction") == 1)
-
-    # Write flagged fraud alerts to another Kafka topic
-    query = fraud_alerts.selectExpr("to_json(struct(*)) AS value") \
+    query_alerts = fraud_alerts.selectExpr("to_json(struct(*)) AS value") \
         .writeStream \
-        .format("kafka") \
-        .option("kafka.bootstrap.servers", "localhost:9092") \
-        .option("topic", "fraud-alerts") \
+        .format("console") \
         .outputMode("append") \
-        .option("checkpointLocation", "/tmp/spark/checkpoints") \
         .start()
 
     print("Fraud detection streaming started...")
-    query.awaitTermination()
-
+    print("Streaming metrics monitoring started...")
+    
+    query_alerts.awaitTermination()
+    query_throughput.awaitTermination()
+    query_metrics.awaitTermination()
 
 if __name__ == "__main__":
     main()

@@ -1,27 +1,3 @@
-# from kafka import KafkaProducer
-# import json
-# import time
-
-# # Kafka Producer configuration
-# producer = KafkaProducer(bootstrap_servers='localhost:9092', 
-#                           value_serializer=lambda v: json.dumps(v).encode('utf-8'))
-
-# # Simulate streaming transaction data
-# def generate_transaction_data():
-#     return {
-#         "V1": 0.1,  # Example feature V1
-#         "V2": 0.2,  # Example feature V2
-#         "Amount": 15.0,
-#         "Time": time.time(),
-#         "Class": 0  # 0 for non-fraudulent, 1 for fraudulent
-#     }
-
-# # Send data to Kafka topic every second
-# while True:
-#     data = generate_transaction_data()
-#     producer.send('task-topic', value=data)
-#     time.sleep(1)  # simulate real-time stream with a 1-second delay
-
 import time
 import json
 from kafka import KafkaProducer
@@ -67,7 +43,7 @@ def generate_transaction_data(test_data):
     
     return transaction
 
-def main():
+def main(rate,total_transactions):
     # Initialize Spark session
     spark = SparkSession.builder \
         .appName("FraudDetectionStreaming") \
@@ -77,20 +53,40 @@ def main():
     file_path = "../ml_model/testdata.csv"  # Replace with your actual file path
     test_data = load_test_data(file_path, spark)
 
-    # Stream data to Kafka
+#     # Stream data to Kafka
     topic = "task-topic"
     print(f"Starting to stream data to Kafka topic: {topic}")
 
-    while True:
-        # Generate a single transaction
+#     while True:
+#         # Generate a single transaction
+#         transaction = generate_transaction_data(test_data)
+
+#         # Send transaction to Kafka
+#         producer.send(topic, value=transaction)
+#         print(f"Sent: {transaction}")
+
+#         # Simulate a 1-second delay between transactions
+#         time.sleep(1/rate)
+
+# if __name__ == "__main__":
+#     rate=1
+#     main(rate)
+    start_time = time.time()
+
+    for i in range(total_transactions):
         transaction = generate_transaction_data(test_data)
-
-        # Send transaction to Kafka
         producer.send(topic, value=transaction)
-        print(f"Sent: {transaction}")
+        # print(f"Sent: {transaction}")
+        time.sleep(1 / rate)
 
-        # Simulate a 1-second delay between transactions
-        time.sleep(1)
+    end_time = time.time()
+    total_time = end_time - start_time
+
+    throughput = total_transactions / total_time
+    print(f"Throughput: {throughput:.2f} transactions/second")
+    print(f"Response Time per transaction: {total_time / total_transactions:.4f} seconds")
 
 if __name__ == "__main__":
-    main()
+    rate = 100  # Transactions per second
+    total_transactions = 1000
+    main(rate, total_transactions)
