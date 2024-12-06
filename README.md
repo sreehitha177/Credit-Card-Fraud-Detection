@@ -15,3 +15,6 @@
     ```bin/kafka-topics.sh --create --topic result_topic --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1```
 7. run ```consumer.py``` and ```producer.py``` in separate terminals
 8. Verify Output: The consumer will process the tasks produced by the producer and print the results to the console.
+
+# Consumer 
+1. ```spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.4 consumer.py```
