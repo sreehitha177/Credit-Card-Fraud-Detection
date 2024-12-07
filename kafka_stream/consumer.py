@@ -211,8 +211,8 @@
 #     main()
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col, unix_timestamp, avg, count,current_timestamp
-from pyspark.sql.types import StructType, StructField, DoubleType
+from pyspark.sql.functions import from_json, col, unix_timestamp, avg, count,current_timestamp,min,from_unixtime
+from pyspark.sql.types import StructType, StructField, DoubleType, TimestampType
 from pyspark.ml.feature import VectorAssembler
 from pyspark.ml.classification import RandomForestClassificationModel
 import csv
@@ -236,63 +236,50 @@ def main():
     ])
 
     
-
-    # Load the trained model
     model = RandomForestClassificationModel.load("../ml_model/trained_model")
 
-    # Read from Kafka
     kafka_stream = spark.readStream \
         .format("kafka") \
         .option("kafka.bootstrap.servers", "localhost:9092") \
         .option("subscribe", "task-topic") \
         .load()
 
-    # Parse the Kafka stream
     parsed_stream = kafka_stream.selectExpr("CAST(value AS STRING)") \
         .select(from_json(col("value"), schema).alias("data")) \
         .select("data.*")
 
-    # Feature transformation
     assembler = VectorAssembler(inputCols=[f"V{i}" for i in range(1, 29)] + ["Amount"], outputCol="features")
     feature_data = assembler.transform(parsed_stream)
 
-    # Apply the trained model
     predictions = model.transform(feature_data)
-
-    # Add processing timestamp after model predictions
-    predictions_with_time = predictions.withColumn("PostProcessingTime", current_timestamp())
-
-    # Calculate response time
-    predictions_with_time = predictions_with_time.withColumn(
-        "ResponseTime", unix_timestamp("PostProcessingTime") - col("Time")
+    predictions = predictions.withColumn("Time", from_unixtime(col("Time")).cast(TimestampType()))
+    predictions = predictions.withColumn("ProcessingTime", current_timestamp())
+    predictions = predictions.withColumn(
+        "ResponseTime", unix_timestamp("ProcessingTime") - unix_timestamp("Time")
     )
 
-    # Aggregate metrics
-    metrics = predictions_with_time.groupBy("IngestionRate").agg(
-        count("*").alias("total_transactions"),
-        avg("ResponseTime").alias("avg_response_time")
+    # Group by IngestionRate and calculate metrics
+    # 
+    metrics = predictions.groupBy("IngestionRate").agg(
+        min(unix_timestamp("Time")).alias("first_transaction_time"),  # Corrected
+        avg("ResponseTime").alias("avg_response_time"),  # Corrected
+        count(col("*")).alias("total_transactions")  # Corrected
     )
 
-    # Write metrics to CSV
-    def write_metrics_to_csv(batch_df, epoch_id):
-        if not batch_df.isEmpty():
-            batch_df = batch_df.collect()
-            with open(metrics_file, 'a', newline='') as file:
-                writer = csv.writer(file)
-                for row in batch_df:
-                    writer.writerow([row['IngestionRate'], row['total_transactions'], row['avg_response_time']])
 
-    # Execute and await termination
-    query = metrics.writeStream \
+    # Calculate throughput as transactions per second
+    throughput = metrics.select(
+        col("IngestionRate"),
+        col("avg_response_time"),
+        (col("total_transactions") / (unix_timestamp(current_timestamp()) - col("first_transaction_time"))).alias("throughput")
+    )
+
+    query = throughput.writeStream \
         .outputMode("complete") \
-        .foreachBatch(write_metrics_to_csv) \
+        .format("console") \
         .start()
 
     query.awaitTermination()
 
 if __name__ == "__main__":
-    # Initialize CSV file with headers
-    with open(metrics_file, 'w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['IngestionRate', 'TotalTransactions', 'AvgResponseTime'])
     main()

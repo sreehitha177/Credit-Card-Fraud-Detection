@@ -170,10 +170,10 @@ def main(rate, total_transactions):
 
 if __name__ == "__main__":
     # ingestion_rates = [10,25,50,75,100,150,200]  # Different ingestion rates to test (transactions per second)
-    ingestion_rates = [10,25]
-    total_transactions = 100
+    ingestion_rates = [20]
+    total_transactions = 200
 
     for rate in ingestion_rates:
         print(f"Testing with ingestion rate: {rate} transactions/second")
         main(rate, total_transactions)
-        time.sleep(10)  # Wait between tests for Kafka to handle data
+        # time.sleep(10)  # Wait between tests for Kafka to handle data
