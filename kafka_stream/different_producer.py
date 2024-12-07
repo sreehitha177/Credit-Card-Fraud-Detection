@@ -5,17 +5,6 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 from pyspark.sql.types import DoubleType
 from pyspark.sql import functions as F
-import threading
-
-# Kafka Producer configuration
-# producer = KafkaProducer(
-#     bootstrap_servers='localhost:9092',
-#     value_serializer=lambda v: json.dumps(v).encode('utf-8')
-# )
-
-# def create_producer():
-#     return KafkaProducer(**producer)
-
 
 def create_producer():
     """Create a new KafkaProducer instance."""
@@ -23,7 +12,6 @@ def create_producer():
         bootstrap_servers='localhost:9092',
         value_serializer=lambda v: json.dumps(v).encode('utf-8')
     )
-
 
 def load_test_data(test_data_path, spark):
     """Load test data from CSV using Spark."""
@@ -43,7 +31,6 @@ def load_test_data(test_data_path, spark):
     
     return test_data
 
-# Generate transaction data from test data
 def generate_transaction_data(test_data):
     """Randomly select a transaction from the test data."""
     # Randomly sample one row from the test data
@@ -57,8 +44,7 @@ def generate_transaction_data(test_data):
     
     return transaction
 
-
-def producer_thread(producer, topic, test_data, rate, total_transactions):
+def producer_for_topic(producer, topic, test_data, rate, total_transactions):
     """Simulate a producer sending transactions to Kafka."""
     for _ in range(total_transactions):
         transaction = generate_transaction_data(test_data)
@@ -66,8 +52,7 @@ def producer_thread(producer, topic, test_data, rate, total_transactions):
         time.sleep(1 / rate)
     print(f"Producer for topic {topic} completed.")
 
-
-def main(rate,total_transactions):
+def main(rate, total_transactions):
     # Initialize Spark session
     spark = SparkSession.builder \
         .appName("FraudDetectionStreaming") \
@@ -77,52 +62,18 @@ def main(rate,total_transactions):
     file_path = "/Users/sreehithanarayana/Desktop/532_project-1/ml_model/testdata.csv"  # Replace with your actual file path
     test_data = load_test_data(file_path, spark)
 
-    topics = ["task-topic-1", "task-topic-1"]
-
+    topics = ["task-topic-1", "task-topic-2"]
+    
+    # Create producers for each topic
     producers = [create_producer() for _ in topics]
-    threads = [
-        threading.Thread(target=producer_thread, args=(producers[i], topics[i], test_data, rate, total_transactions))
-        for i in range(len(topics))
-    ]
-
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
-#     # Stream data to Kafka
-    # topic = "task-topic"
-    # print(f"Starting to stream data to Kafka topic: {topic}")
-
-#     while True:
-#         # Generate a single transaction
-#         transaction = generate_transaction_data(test_data)
-
-#         # Send transaction to Kafka
-#         producer.send(topic, value=transaction)
-#         print(f"Sent: {transaction}")
-
-#         # Simulate a 1-second delay between transactions
-#         time.sleep(1/rate)
-
-# if __name__ == "__main__":
-#     rate=1
-#     main(rate)
-    # start_time = time.time()
-
-    # # for i in range(total_transactions):
-    # #     transaction = generate_transaction_data(test_data)
-    # #     # producers.send(topics, value=transaction)
-    # #     for producer, topic in zip(producers, topics):
-    # #         producer.send(topic, value=transaction)
-    # #     # print(f"Sent: {transaction}")
-    # #     time.sleep(1 / rate)
-
-    # end_time = time.time()
-    # total_time = end_time - start_time
-
-    # throughput = total_transactions / total_time
-    # print(f"Throughput: {throughput:.2f} transactions/second")
-    # print(f"Response Time per transaction: {total_time / total_transactions:.4f} seconds")
+    
+    # Send data to Kafka topic 1
+    print(f"Starting producer for {topics[0]}")
+    producer_for_topic(producers[0], topics[0], test_data, rate, total_transactions)
+    
+    # Send data to Kafka topic 2
+    print(f"Starting producer for {topics[1]}")
+    producer_for_topic(producers[1], topics[1], test_data, rate, total_transactions)
 
 if __name__ == "__main__":
     rate = 100  # Transactions per second
