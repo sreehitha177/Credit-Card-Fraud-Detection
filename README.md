@@ -11,8 +11,8 @@
 2. Start kafka brokers: ```bin/kafka-server-start.sh config/server.properties```
 3. create kafka topics: ```bin/kafka-topics.sh --create --topic <topic_name> --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1```
 4. Run ```consumer.py``` and ```producer.py``` in separate terminals
-# To run producer.py - ```python producer.py```
-# To run spark-Consumer - ```spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.4 consumer.py```
+- To run producer.py - ```python producer.py```
+- To run spark-Consumer - ```spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.4 consumer.py```
 5. Verify Output: The consumer will process the tasks produced by the producer and print the results to the console.
 
 ## Experimentation and Test Cases
